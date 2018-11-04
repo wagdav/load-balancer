@@ -1,71 +1,42 @@
 module Lib
-    ( someFunc
-    ) where
+  ( start
+  )
+where
 
-import Control.Concurrent.Async
-import Control.Concurrent.STM
-import Control.Concurrent.STM.TChan
-import Control.Concurrent        (threadDelay)
-import System.Random             (getStdRandom, randomR)
-import Text.Printf               (printf)
-import Control.Monad               (forever)
+import           Control.Concurrent             ( threadDelay )
+import           Control.Concurrent.Async       ( race_
+                                                , async
+                                                )
+import           Control.Concurrent.STM
+import           Control.Concurrent.STM.TChan
+import           Control.Monad                  ( forever )
+import           System.Random                  ( getStdRandom
+                                                , randomR
+                                                )
 
-someFunc :: IO ()
-someFunc = start
+import           Balancer
+import           Worker
 
+randomTask :: IO Int
+randomTask = do
+  delayMs <- getStdRandom $ randomR (1, 3000)
+  threadDelay (delayMs * 1000)
+  return delayMs
 
-type Result = Int
-
-data Request = Request (IO ()) (TChan Result)
-data Worker = Worker (TChan Request) Int Int
-data Balancer = Balancer [Worker]
-
-
-work :: IO ()
-work = do
-    delayMs <- getStdRandom $ randomR (1, 1000)
-    printf "Worker starts...\n"
-    threadDelay (delayMs * 1000)
-    printf "Worker done!\n"
-
-requester :: TChan Request -> IO ()
+requester :: TChan (Request Int) -> IO ()
 requester balancer = forever $ do
-    delayMs <- getStdRandom $ randomR (1, 2000)
-    threadDelay (delayMs * 1000) -- simulating random load
-    printf "Requester sending work...\n"
+  delayMs <- getStdRandom $ randomR (1, 1000)
+  threadDelay (delayMs * 1000) -- simulating random load
 
-    resultChan <- newTChanIO
-    atomically $ writeTChan balancer (Request work resultChan)
-    result <- atomically $ readTChan resultChan
+  resultChan <- newTChanIO
+  atomically $ writeTChan balancer (Request randomTask resultChan)
 
-    printf "Requester received result: %d\n" result
-
-worker :: TChan Request -> IO ()
-worker requestChan = forever $ do
-    Request task resultChan <- atomically $ readTChan requestChan
-    task
-    atomically $ writeTChan resultChan 42
-
-balance :: Balancer -> TChan Request -> IO ()
-balance balancer requestChan = do
-    request <- atomically $ readTChan requestChan
-    newBalancer <- dispatch balancer request
-    balance newBalancer requestChan
-
-dispatch :: Balancer -> Request -> IO Balancer
-dispatch (Balancer []) _ = return (Balancer [])
-dispatch (Balancer (Worker requestChan x y:ws)) request = do
-    atomically $ writeTChan requestChan request
-    return $ Balancer (ws ++ [Worker requestChan x y])
-
+  -- wait for the result
+  async $ atomically $ readTChan resultChan
 
 start :: IO ()
 start = do
-    c <- newTChanIO
+  chan     <- newTChanIO
+  balancer <- newBalancer chan 3
 
-    async $ requester c
-    async $ worker c
-
-    let workers = [Worker c 0 0]
-    balance (Balancer workers) c
-    return ()
+  race_ (balance chan balancer) (requester chan)
