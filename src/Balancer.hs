@@ -18,8 +18,8 @@ type Pool a = DH.MinPrioHeap Int (Worker a)
 -- | Load balancer to dispatch work that result in 'a'
 data Balancer a = Balancer (Pool a) (TChan (Worker a))
 
-data BalancerMsg a = RequestReceived (Request a)
-                   | WorkerDone (Worker a)
+data ControlMessage a = RequestReceived (Request a)
+                      | WorkerDone (Worker a)
 
 balance
   :: TChan (Request a) -- ^ input channel to receive work from
