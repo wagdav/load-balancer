@@ -23,11 +23,14 @@ randomTask = do
   threadDelay (delayMs * 1000)
   return delayMs
 
-requester :: TChan (Request Int) -> IO ()
+requester
+  :: TChan (Request Int) -- ^ input channel of the load balancer
+  -> IO ()
 requester balancer = forever $ do
   delayMs <- getStdRandom $ randomR (1, 1000)
   threadDelay (delayMs * 1000) -- simulating random load
 
+  -- send the request
   resultChan <- newTChanIO
   atomically $ writeTChan balancer (Request randomTask resultChan)
 

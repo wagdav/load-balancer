@@ -43,13 +43,19 @@ balance requestChan (Balancer workers doneChannel) = race_
     putStrLn $ "Balancer: " ++ show newPool
     runBalancer newPool
 
-dispatch :: Pool a -> Request a -> IO (Pool a)
+dispatch
+  :: Pool a      -- ^ worker pool
+  -> Request a   -- ^ incoming request
+  -> IO (Pool a) -- ^ new pool with updated worker priorities
 dispatch pool request = do
   let ((p, w), pool') = fromJust $ DH.view pool
   schedule w request
   return $ DH.insert (p + 1, w) pool'
 
-completed :: Pool a -> Worker a -> Pool a
+completed
+  :: Pool a   -- ^ worker pool
+  -> Worker a -- ^ worker that finished the task
+  -> Pool a   -- ^ new pool with updated worker priorities
 completed pool worker =
   let (p', pool') = DH.partition (\item -> snd item == worker) pool
       [(p, w)]    = toList p'
@@ -58,7 +64,7 @@ completed pool worker =
 newBalancer
   :: TChan (Request a) -- ^ input channel to receive data from
   -> Int               -- ^ number of workers
-  -> IO (Balancer a)   -- ^ return value
+  -> IO (Balancer a)
 newBalancer channel n = do
   workers     <- forM [1 .. n] newWorker
   doneChannel <- newTChanIO
